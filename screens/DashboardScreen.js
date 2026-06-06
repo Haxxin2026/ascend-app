@@ -199,6 +199,10 @@ export default function DashboardScreen() {
           <Text style={styles.heatmapBtnText}>Daily missions</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity style={styles.studyBtn} onPress={() => router.push("/practice")}>
+          <Text style={styles.studyBtnText}>Practice questions</Text>
+        </TouchableOpacity>
+
         <View style={styles.card}>
           <View style={styles.missionsHeader}>
             <Text style={styles.cardTitle}>Daily missions</Text>
@@ -377,6 +381,4 @@ const styles = StyleSheet.create({
   },
   viewAllText: { fontSize: 13, color: "#7C3AED" },
 });
-
-Ah 
 

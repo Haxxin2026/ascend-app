@@ -12,6 +12,7 @@ export default function RootLayout() {
         <Stack.Screen name="study" />
         <Stack.Screen name="heatmap" />
         <Stack.Screen name="missions" />
+        <Stack.Screen name="practice" />
       </Stack>
       <StatusBar style="light" />
     </AuthProvider>
