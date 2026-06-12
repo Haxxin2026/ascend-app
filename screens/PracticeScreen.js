@@ -1,12 +1,12 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../lib/supabase";
 
@@ -21,6 +21,9 @@ export default function PracticeScreen() {
   const [finished, setFinished] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [subjects, setSubjects] = useState([]);
+  const [availableTopics, setAvailableTopics] = useState([]);
+  const [selectedTopic, setSelectedTopic] = useState(null);
+  const [selectedDifficulty, setSelectedDifficulty] = useState(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -38,15 +41,34 @@ export default function PracticeScreen() {
     setSubjects(data?.subjects || []);
   }
 
-  async function startPractice(subject) {
+async function loadTopics(subject) {
+    setSelectedSubject(subject);
     const { data } = await supabase
       .from("questions")
+      .select("topic")
+      .eq("subject", subject);
+
+    if (data) {
+      const unique = [...new Set(data.map((q) => q.topic))];
+      setAvailableTopics(unique);
+    }
+  }
+
+   async function startPractice(difficulty) {
+    let query = supabase
+      .from("questions")
       .select("*")
-      .eq("subject", subject)
-      .order("created_at", { ascending: false });
+      .eq("subject", selectedSubject)
+      .eq("topic", selectedTopic);
+
+    if (difficulty !== "All") {
+      query = query.eq("difficulty", difficulty);
+    }
+
+    const { data } = await query.order("created_at", { ascending: false });
 
     if (!data || data.length === 0) {
-      Alert.alert("No questions", "No questions available for this subject yet.");
+      Alert.alert("No questions", "No questions available for this difficulty yet.");
       return;
     }
 
@@ -57,8 +79,9 @@ export default function PracticeScreen() {
     setFinished(false);
     setSelectedAnswer(null);
     setShowResult(false);
-    setSelectedSubject(subject);
+    setSelectedDifficulty(difficulty);
   }
+
 
   async function submitAnswer(answer) {
     setSelectedAnswer(answer);
@@ -146,7 +169,7 @@ export default function PracticeScreen() {
             <TouchableOpacity
               key={sub}
               style={styles.subjectCard}
-              onPress={() => startPractice(sub)}
+              onPress={() => loadTopics(sub)}
             >
               <Text style={styles.subjectCardText}>{sub}</Text>
               <Text style={styles.subjectArrow}>→</Text>
@@ -156,6 +179,110 @@ export default function PracticeScreen() {
       </ScrollView>
     );
   }
+
+  if (!selectedTopic) {
+    return (
+      <ScrollView style={styles.container}>
+        <View style={styles.inner}>
+          <TouchableOpacity
+            style={styles.backLink}
+            onPress={() => {
+              setSelectedSubject(null);
+              setAvailableTopics([]);
+            }}
+          >
+            <Text style={styles.backLinkText}>← Back</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.title}>{selectedSubject}</Text>
+          <Text style={styles.subtitle}>
+            Pick a topic or practice everything
+          </Text>
+
+          <TouchableOpacity
+            style={styles.allTopicsCard}
+            onPress={() => setSelectedTopic("All Topics")}
+          >
+            <Text style={styles.allTopicsText}>All Topics (mixed)</Text>
+            <Text style={styles.subjectArrow}>→</Text>
+          </TouchableOpacity>
+
+          {availableTopics.map((topic) => (
+            <TouchableOpacity
+              key={topic}
+              style={styles.subjectCard}
+              onPress={() => setSelectedTopic(topic)}
+            >
+              <Text style={styles.subjectCardText}>{topic}</Text>
+              <Text style={styles.subjectArrow}>→</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    );
+  }
+
+  if (!selectedDifficulty) {
+    return (
+      <ScrollView style={styles.container}>
+        <View style={styles.inner}>
+          <TouchableOpacity
+            style={styles.backLink}
+            onPress={() => setSelectedTopic(null)}
+          >
+            <Text style={styles.backLinkText}>← Back</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.title}>{selectedTopic}</Text>
+          <Text style={styles.subtitle}>
+            Pick a difficulty level
+          </Text>
+
+          <TouchableOpacity
+            style={styles.allTopicsCard}
+            onPress={() => startPractice("All")}
+          >
+            <Text style={styles.allTopicsText}>All Difficulties (mixed)</Text>
+            <Text style={[styles.subjectArrow, { color: "#fff" }]}>→</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.difficultyCard, styles.diffEasy]}
+            onPress={() => startPractice("easy")}
+          >
+            <View>
+              <Text style={styles.diffLabel}>Easy</Text>
+              <Text style={styles.diffDesc}>Build your foundation</Text>
+            </View>
+            <Text style={styles.subjectArrow}>→</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.difficultyCard, styles.diffMedium]}
+            onPress={() => startPractice("medium")}
+          >
+            <View>
+              <Text style={styles.diffLabel}>Medium</Text>
+              <Text style={styles.diffDesc}>Challenge yourself</Text>
+            </View>
+            <Text style={styles.subjectArrow}>→</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.difficultyCard, styles.diffHard]}
+            onPress={() => startPractice("hard")}
+          >
+            <View>
+              <Text style={styles.diffLabel}>Hard</Text>
+              <Text style={styles.diffDesc}>Test your mastery</Text>
+            </View>
+            <Text style={styles.subjectArrow}>→</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  }
+
 
   if (finished) {
     const percentage = Math.round((score / questions.length) * 100);
@@ -191,6 +318,9 @@ export default function PracticeScreen() {
             style={styles.doneBtn}
             onPress={() => {
               setSelectedSubject(null);
+              setSelectedTopic(null);
+              setSelectedDifficulty(null);
+              setAvailableTopics([]);
               setQuestions([]);
             }}
           >
@@ -218,6 +348,18 @@ export default function PracticeScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.inner}>
+        <TouchableOpacity
+          style={styles.backLink}
+          onPress={() => {
+            setSelectedDifficulty(null);
+            setQuestions([]);
+            setCurrentIndex(0);
+            setSelectedAnswer(null);
+            setShowResult(false);
+          }}
+        >
+          <Text style={styles.backLinkText}>← Back to topics</Text>
+        </TouchableOpacity>
         <View style={styles.progressHeader}>
           <Text style={styles.progressLabel}>
             Question {currentIndex + 1} of {questions.length}
@@ -463,5 +605,42 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   backBtnText: { color: "#8888A0", fontSize: 14 },
+
+
+allTopicsCard: {
+    backgroundColor: "#7C3AED",
+    borderRadius: 14,
+    padding: 18,
+    marginBottom: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  allTopicsText: { fontSize: 16, fontWeight: "600", color: "#fff" },
+
+  difficultyCard: {
+    borderRadius: 14,
+    padding: 18,
+    marginBottom: 10,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  diffEasy: {
+    backgroundColor: "#0A1A0E",
+    borderColor: "#22C55E",
+  },
+  diffMedium: {
+    backgroundColor: "#1A1806",
+    borderColor: "#EAB308",
+  },
+  diffHard: {
+    backgroundColor: "#1C1012",
+    borderColor: "#EF4444",
+  },
+  diffLabel: { fontSize: 16, fontWeight: "600", color: "#F1F1F3", marginBottom: 2 },
+  diffDesc: { fontSize: 13, color: "#8888A0" },
+
 });
 

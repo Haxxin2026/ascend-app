@@ -14,9 +14,8 @@ import {
 import { useAuth } from "../context/AuthContext";
 
 const SUBJECTS = [
+  "SAT Reading and Writing",
   "SAT Math",
-  "SAT Reading",
-  "SAT Writing",
   "AP Calculus",
   "AP Physics",
   "AP History",
