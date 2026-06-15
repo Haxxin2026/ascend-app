@@ -39,7 +39,7 @@ export default function SignInScreen() {
     if (error) {
       Alert.alert("Login failed", error.message);
     } else {
-      router.replace("/dashboard");
+      router.replace("/(tabs)");
     }
   }
 
