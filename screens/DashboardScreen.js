@@ -3,6 +3,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
+  Alert,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -12,30 +14,9 @@ import {
 } from "react-native";
 import { supabase } from "../lib/supabase";
 
-// ── Design tokens ──
-const INK = {
-  950: "#0A0806",
-  900: "#14100B",
-  800: "#1F1A13",
-  750: "#2A2218",
-  700: "#382E20",
-};
-const CLAY = {
-  300: "#DDA878",
-  400: "#D5895B",
-  600: "#C8643C",
-  700: "#A8492A",
-  900: "#2A1610",
-};
-const TEXT = {
-  strong: "#FCF8F1",
-  primary: "#F0E8DA",
-  secondary: "#CABBA6",
-  muted: "#968A76",
-  faint: "#5F5645",
-  accent: "#C8643C",
-};
-
+const INK = { 950: "#0A0806", 900: "#14100B", 800: "#1F1A13", 750: "#2A2218", 700: "#382E20" };
+const CLAY = { 300: "#DDA878", 400: "#D5895B", 600: "#C8643C", 700: "#A8492A", 900: "#2A1610" };
+const TEXT = { strong: "#FCF8F1", primary: "#F0E8DA", secondary: "#CABBA6", muted: "#968A76", faint: "#5F5645", accent: "#C8643C" };
 const SERIF = Platform.OS === "ios" ? "Georgia" : "serif";
 
 export default function DashboardScreen() {
@@ -46,6 +27,7 @@ export default function DashboardScreen() {
   const [todaySessions, setTodaySessions] = useState([]);
   const [todayTasks, setTodayTasks] = useState([]);
   const [todayMinutes, setTodayMinutes] = useState(0);
+  const [showProfile, setShowProfile] = useState(false);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -63,19 +45,15 @@ export default function DashboardScreen() {
   );
 
   async function loadData(userId) {
-    const { data: profileData } = await supabase
-      .from("users").select("*").eq("id", userId).single();
+    const { data: profileData } = await supabase.from("users").select("*").eq("id", userId).single();
     setProfile(profileData);
-    const { data: streakData } = await supabase
-      .from("streaks").select("*").eq("user_id", userId).single();
+    const { data: streakData } = await supabase.from("streaks").select("*").eq("user_id", userId).single();
     setStreak(streakData);
-    const { data: sessionData } = await supabase
-      .from("study_sessions").select("*").eq("user_id", userId).eq("date", today);
+    const { data: sessionData } = await supabase.from("study_sessions").select("*").eq("user_id", userId).eq("date", today);
     setTodaySessions(sessionData || []);
     const totalMin = (sessionData || []).reduce((sum, s) => sum + s.duration_min, 0);
     setTodayMinutes(totalMin);
-    const { data: taskData } = await supabase
-      .from("tasks").select("*").eq("user_id", userId).eq("date", today);
+    const { data: taskData } = await supabase.from("tasks").select("*").eq("user_id", userId).eq("date", today);
     setTodayTasks(taskData || []);
   }
 
@@ -92,54 +70,93 @@ export default function DashboardScreen() {
   const streakCount = streak?.current_streak || 0;
   const missionsComplete = todayTasks.filter((t) => t.completed).length;
   const missionsTotal = todayTasks.length;
-
   const days = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
   const dayName = days[new Date().getDay()];
   const userName = profile?.username || "Student";
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[INK[900], "#1A1208", INK[950]]}
-        locations={[0, 0.4, 1]}
-        style={StyleSheet.absoluteFill}
-      />
+      <LinearGradient colors={[INK[900], "#1A1208", INK[950]]} locations={[0, 0.4, 1]} style={StyleSheet.absoluteFill} />
+
+      {/* Profile Modal */}
+      <Modal visible={showProfile} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Profile</Text>
+              <TouchableOpacity onPress={() => setShowProfile(false)}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.profileAvatar}>
+              <Text style={styles.profileAvatarText}>{userName.charAt(0).toUpperCase()}</Text>
+            </View>
+
+            <View style={styles.profileRow}>
+              <Text style={styles.profileLabel}>USERNAME</Text>
+              <Text style={styles.profileValue}>{userName}</Text>
+            </View>
+            <View style={styles.profileRow}>
+              <Text style={styles.profileLabel}>EMAIL</Text>
+              <Text style={styles.profileValue}>{user?.email || "—"}</Text>
+            </View>
+            <View style={styles.profileRow}>
+              <Text style={styles.profileLabel}>LEVEL</Text>
+              <Text style={styles.profileValue}>{level}</Text>
+            </View>
+            <View style={styles.profileRow}>
+              <Text style={styles.profileLabel}>TOTAL XP</Text>
+              <Text style={styles.profileValue}>{xp}</Text>
+            </View>
+            <View style={styles.profileRow}>
+              <Text style={styles.profileLabel}>LONGEST STREAK</Text>
+              <Text style={styles.profileValue}>{streak?.longest_streak || 0} days</Text>
+            </View>
+            <View style={styles.profileRow}>
+              <Text style={styles.profileLabel}>SUBJECTS</Text>
+              <Text style={styles.profileValue}>{(profile?.subjects || []).join(", ") || "—"}</Text>
+            </View>
+            <View style={styles.profileRow}>
+              <Text style={styles.profileLabel}>DAILY GOAL</Text>
+              <Text style={styles.profileValue}>{goalMin} min/day</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.signOutBtn}
+              onPress={() => { setShowProfile(false); handleSignOut(); }}
+            >
+              <Text style={styles.signOutBtnText}>Sign out</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.inner}>
 
-          {/* ── Header ── */}
+          {/* Header */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.eyebrow}>
-                {dayName} · DAY {streakCount}
-              </Text>
-              <Text style={styles.heroName}>
-                Hey, {userName}
-              </Text>
+              <Text style={styles.eyebrow}>{dayName} · DAY {streakCount}</Text>
+              <Text style={styles.heroName}>Hey, {userName}</Text>
               <Text style={styles.heroSub}>
-                {streakCount > 0
-                  ? "Let's keep the streak alive 🔥"
-                  : "Let's start something great today"}
+                {streakCount > 0 ? "Let's keep the streak alive 🔥" : "Let's start something great today"}
               </Text>
             </View>
-            <TouchableOpacity style={styles.avatar} onPress={handleSignOut}>
-              <Text style={styles.avatarText}>
-                {userName.charAt(0).toUpperCase()}
-              </Text>
+            <TouchableOpacity style={styles.avatar} onPress={() => setShowProfile(true)}>
+              <Text style={styles.avatarText}>{userName.charAt(0).toUpperCase()}</Text>
             </TouchableOpacity>
           </View>
 
-          {/* ── Stats Card ── */}
+          {/* Stats Card */}
           <View style={styles.statsCard}>
-            {/* Level ring */}
             <View style={styles.levelRing}>
               <View style={styles.levelInner}>
                 <Text style={styles.levelLabel}>LEVEL</Text>
                 <Text style={styles.levelNum}>{level}</Text>
               </View>
             </View>
-
-            {/* XP and Streak */}
             <View style={styles.statsRight}>
               <View style={styles.statItem}>
                 <Text style={styles.statBigNum}>{xp.toLocaleString()}</Text>
@@ -154,120 +171,75 @@ export default function DashboardScreen() {
                 <Text style={styles.statSmLabel}>Day streak</Text>
               </View>
             </View>
-
-            {/* XP meter */}
             <View style={styles.xpMeterWrap}>
               <View style={styles.xpMeterTrack}>
                 <LinearGradient
                   colors={[CLAY[700], CLAY[600], CLAY[400]]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                   style={[styles.xpMeterFill, { width: `${Math.max((xpProgress / 200) * 100, 3)}%` }]}
                 />
               </View>
-              <Text style={styles.xpMeterText}>
-                {xpProgress} / 200 XP to Lv {level + 1}
-              </Text>
+              <Text style={styles.xpMeterText}>{xpProgress} / 200 XP to Lv {level + 1}</Text>
             </View>
           </View>
 
-          {/* ── Daily Goal ── */}
+          {/* Daily Goal */}
           <View style={styles.goalCard}>
             <View style={styles.goalHeader}>
               <Text style={styles.goalTitle}>Today's study goal</Text>
-              <Text style={styles.goalValue}>
-                {todayMinutes} / {goalMin} min
-              </Text>
+              <Text style={styles.goalValue}>{todayMinutes} / {goalMin} min</Text>
             </View>
             <View style={styles.goalTrack}>
               <LinearGradient
                 colors={["#93A877", "#A8B88A"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                 style={[styles.goalFill, { width: `${Math.max(goalProgress * 100, 3)}%` }]}
               />
             </View>
             <Text style={styles.goalHint}>
-              {goalProgress >= 1
-                ? "Goal reached — incredible work."
-                : `${goalMin - todayMinutes} minutes to go — one short session does it.`}
+              {goalProgress >= 1 ? "Goal reached — incredible work." : `${goalMin - todayMinutes} minutes to go — one short session does it.`}
             </Text>
           </View>
 
-          {/* ── Jump back in ── */}
+          {/* Jump back in */}
           <Text style={styles.sectionEyebrow}>JUMP BACK IN</Text>
           <View style={styles.jumpRow}>
-           <TouchableOpacity
-              style={styles.jumpCardSecondary}
-              activeOpacity={0.85}
-              onPress={() => router.push("/study")}
-            >
-              <View style={styles.jumpIconWrap2}>
-                <Text style={styles.jumpIcon}>⏱</Text>
-              </View>
-              <Text style={styles.jumpTitle}>Start session</Text>
-              <Text style={styles.jumpSub}>Focus timer</Text>
+            <TouchableOpacity style={styles.jumpCard} activeOpacity={0.85} onPress={() => router.push("/(tabs)/study")}>
+              <View style={styles.jumpIconWrap}><Text style={styles.jumpIcon}>⏱</Text></View>
+              <Text style={styles.jumpTitle}>Timer</Text>
+              <Text style={styles.jumpSub}>Focus session</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.jumpCardSecondary}
-              activeOpacity={0.85}
-              onPress={() => router.push("/practice")}
-            >
-              <View style={styles.jumpIconWrap2}>
-                <Text style={styles.jumpIcon}>✏️</Text>
-              </View>
+            <TouchableOpacity style={styles.jumpCard} activeOpacity={0.85} onPress={() => router.push("/(tabs)/practice")}>
+              <View style={styles.jumpIconWrap}><Text style={styles.jumpIcon}>✏️</Text></View>
               <Text style={styles.jumpTitle}>Practice</Text>
-              <Text style={styles.jumpSub}>
-                {missionsTotal > 0 ? `${missionsTotal} questions` : "1,400+ questions"}
-              </Text>
+              <Text style={styles.jumpSub}>1,400+ questions</Text>
             </TouchableOpacity>
           </View>
-
-          {/* ── More actions ── */}
           <View style={styles.jumpRow}>
-            <TouchableOpacity
-              style={styles.jumpCardSecondary}
-              activeOpacity={0.85}
-              onPress={() => router.push("/heatmap")}
-            >
-              <View style={styles.jumpIconWrap2}>
-                <Text style={styles.jumpIcon}>🗺️</Text>
-              </View>
+            <TouchableOpacity style={styles.jumpCard} activeOpacity={0.85} onPress={() => router.push("/(tabs)/heatmap")}>
+              <View style={styles.jumpIconWrap}><Text style={styles.jumpIcon}>🗺️</Text></View>
               <Text style={styles.jumpTitle}>Heatmap</Text>
               <Text style={styles.jumpSub}>Weak spots</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.jumpCardSecondary}
-              activeOpacity={0.85}
-              onPress={() => router.push("/missions")}
-            >
-              <View style={styles.jumpIconWrap2}>
-                <Text style={styles.jumpIcon}>🎯</Text>
-              </View>
+            <TouchableOpacity style={styles.jumpCard} activeOpacity={0.85} onPress={() => router.push("/(tabs)/missions")}>
+              <View style={styles.jumpIconWrap}><Text style={styles.jumpIcon}>🎯</Text></View>
               <Text style={styles.jumpTitle}>Missions</Text>
-              <Text style={styles.jumpSub}>
-                {missionsTotal > 0 ? `${missionsComplete}/${missionsTotal} done` : "Set goals"}
-              </Text>
+              <Text style={styles.jumpSub}>{missionsTotal > 0 ? `${missionsComplete}/${missionsTotal} done` : "Set goals"}</Text>
             </TouchableOpacity>
           </View>
 
-          {/* ── Missions progress ── */}
+          {/* Missions progress */}
           {missionsTotal > 0 && (
-            <TouchableOpacity activeOpacity={0.85} onPress={() => router.push("/missions")}>
+            <TouchableOpacity activeOpacity={0.85} onPress={() => router.push("/(tabs)/missions")}>
               <View style={styles.missionCard}>
                 <View style={styles.goalHeader}>
                   <Text style={styles.goalTitle}>Missions</Text>
-                  <Text style={styles.missionCount}>
-                    {missionsComplete} / {missionsTotal} done
-                  </Text>
+                  <Text style={styles.missionCount}>{missionsComplete} / {missionsTotal} done</Text>
                 </View>
                 <View style={styles.goalTrack}>
                   <LinearGradient
                     colors={[CLAY[600], CLAY[400]]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                     style={[styles.goalFill, { width: `${Math.max((missionsComplete / missionsTotal) * 100, 3)}%` }]}
                   />
                 </View>
@@ -275,7 +247,7 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           )}
 
-          {/* ── Today's sessions ── */}
+          {/* Today's sessions */}
           {todaySessions.length > 0 && (
             <View style={styles.sessionsWrap}>
               <Text style={styles.sectionEyebrow}>TODAY'S SESSIONS</Text>
@@ -285,9 +257,7 @@ export default function DashboardScreen() {
                     <View style={styles.sessionDot} />
                     <View>
                       <Text style={styles.sessionName}>{session.subject}</Text>
-                      <Text style={styles.sessionMeta}>
-                        {session.duration_min} min · +{session.xp_earned} XP
-                      </Text>
+                      <Text style={styles.sessionMeta}>{session.duration_min} min · +{session.xp_earned} XP</Text>
                     </View>
                   </View>
                 </View>
@@ -306,292 +276,67 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   inner: { paddingHorizontal: 20, paddingTop: 64 },
 
-  // Header
-  header: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 28,
-  },
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: TEXT.accent,
-    letterSpacing: 2,
-    marginBottom: 6,
-  },
-  heroName: {
-    fontSize: 32,
-    fontWeight: "700",
-    color: TEXT.strong,
-    fontFamily: SERIF,
-    fontStyle: "italic",
-    letterSpacing: -0.5,
-  },
-  heroSub: {
-    fontSize: 14,
-    color: TEXT.muted,
-    marginTop: 4,
-  },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: CLAY[700],
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 16,
-    marginTop: 20,
-  },
-  avatarText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: TEXT.strong,
-  },
+  header: { flexDirection: "row", alignItems: "flex-start", marginBottom: 28 },
+  eyebrow: { fontSize: 11, fontWeight: "700", color: TEXT.accent, letterSpacing: 2, marginBottom: 6 },
+  heroName: { fontSize: 32, fontWeight: "700", color: TEXT.strong, fontFamily: SERIF, fontStyle: "italic", letterSpacing: -0.5 },
+  heroSub: { fontSize: 14, color: TEXT.muted, marginTop: 4 },
+  avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: CLAY[700], alignItems: "center", justifyContent: "center", marginLeft: 16, marginTop: 20 },
+  avatarText: { fontSize: 16, fontWeight: "700", color: TEXT.strong },
 
-  // Stats card
-  statsCard: {
-    backgroundColor: INK[800],
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: INK[700],
-  },
-  levelRing: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 3,
-    borderColor: CLAY[600],
-    alignItems: "center",
-    justifyContent: "center",
-    alignSelf: "flex-start",
-    marginBottom: 16,
-  },
-  levelInner: {
-    alignItems: "center",
-  },
-  levelLabel: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: TEXT.muted,
-    letterSpacing: 1.5,
-  },
-  levelNum: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: TEXT.strong,
-    letterSpacing: -1,
-    lineHeight: 28,
-  },
-  statsRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 18,
-  },
-  statItem: {
-    flex: 1,
-  },
-  statBigNum: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: TEXT.strong,
-    letterSpacing: -0.5,
-  },
-  statSmLabel: {
-    fontSize: 12,
-    color: TEXT.muted,
-    marginTop: 2,
-  },
-  statDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: INK[700],
-    marginHorizontal: 16,
-  },
-  streakRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  fireEmoji: {
-    fontSize: 18,
-  },
-  xpMeterWrap: {
-    marginTop: 2,
-  },
-  xpMeterTrack: {
-    height: 6,
-    backgroundColor: INK[750],
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  xpMeterFill: {
-    height: 6,
-    borderRadius: 3,
-  },
-  xpMeterText: {
-    fontSize: 12,
-    color: TEXT.faint,
-    marginTop: 8,
-  },
+  statsCard: { backgroundColor: INK[800], borderRadius: 16, padding: 20, marginBottom: 12, borderWidth: 1, borderColor: INK[700] },
+  levelRing: { width: 72, height: 72, borderRadius: 36, borderWidth: 3, borderColor: CLAY[600], alignItems: "center", justifyContent: "center", alignSelf: "flex-start", marginBottom: 16 },
+  levelInner: { alignItems: "center" },
+  levelLabel: { fontSize: 9, fontWeight: "700", color: TEXT.muted, letterSpacing: 1.5 },
+  levelNum: { fontSize: 24, fontWeight: "800", color: TEXT.strong, letterSpacing: -1, lineHeight: 28 },
+  statsRight: { flexDirection: "row", alignItems: "center", marginBottom: 18 },
+  statItem: { flex: 1 },
+  statBigNum: { fontSize: 22, fontWeight: "800", color: TEXT.strong, letterSpacing: -0.5 },
+  statSmLabel: { fontSize: 12, color: TEXT.muted, marginTop: 2 },
+  statDivider: { width: 1, height: 30, backgroundColor: INK[700], marginHorizontal: 16 },
+  streakRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  fireEmoji: { fontSize: 18 },
+  xpMeterWrap: { marginTop: 2 },
+  xpMeterTrack: { height: 6, backgroundColor: INK[750], borderRadius: 3, overflow: "hidden" },
+  xpMeterFill: { height: 6, borderRadius: 3 },
+  xpMeterText: { fontSize: 12, color: TEXT.faint, marginTop: 8 },
 
-  // Goal card
-  goalCard: {
-    backgroundColor: INK[800],
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: INK[700],
-  },
-  goalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  goalTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: TEXT.primary,
-  },
-  goalValue: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: TEXT.secondary,
-  },
-  goalTrack: {
-    height: 6,
-    backgroundColor: INK[750],
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  goalFill: {
-    height: 6,
-    borderRadius: 3,
-  },
-  goalHint: {
-    fontSize: 12,
-    color: TEXT.faint,
-    marginTop: 10,
-    fontStyle: "italic",
-  },
+  goalCard: { backgroundColor: INK[800], borderRadius: 16, padding: 18, marginBottom: 12, borderWidth: 1, borderColor: INK[700] },
+  goalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  goalTitle: { fontSize: 15, fontWeight: "600", color: TEXT.primary },
+  goalValue: { fontSize: 14, fontWeight: "600", color: TEXT.secondary },
+  goalTrack: { height: 6, backgroundColor: INK[750], borderRadius: 3, overflow: "hidden" },
+  goalFill: { height: 6, borderRadius: 3 },
+  goalHint: { fontSize: 12, color: TEXT.faint, marginTop: 10, fontStyle: "italic" },
 
-  // Jump section
-  sectionEyebrow: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: TEXT.faint,
-    letterSpacing: 2,
-    marginTop: 14,
-    marginBottom: 14,
-  },
-  jumpRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 10,
-  },
-  jumpCardPrimary: {
-    flex: 1,
-  },
-  jumpCardInner: {
-    borderRadius: 16,
-    padding: 18,
-    height: 130,
-    justifyContent: "flex-end",
-  },
-  jumpCardSecondary: {
-    flex: 1,
-    backgroundColor: INK[800],
-    borderRadius: 16,
-    padding: 18,
-    height: 130,
-    justifyContent: "flex-end",
-    borderWidth: 1,
-    borderColor: INK[700],
-  },
-  jumpIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-  },
-  jumpIconWrap2: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: INK[750],
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-  },
-  jumpIcon: {
-    fontSize: 20,
-  },
-  jumpTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: TEXT.strong,
-    marginBottom: 2,
-  },
-  jumpSub: {
-    fontSize: 12,
-    color: TEXT.muted,
-  },
+  sectionEyebrow: { fontSize: 11, fontWeight: "700", color: TEXT.faint, letterSpacing: 2, marginTop: 14, marginBottom: 14 },
+  jumpRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
+  jumpCard: { flex: 1, backgroundColor: INK[800], borderRadius: 16, padding: 18, height: 130, justifyContent: "flex-end", borderWidth: 1, borderColor: INK[700] },
+  jumpIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: INK[750], alignItems: "center", justifyContent: "center", marginBottom: 14 },
+  jumpIcon: { fontSize: 20 },
+  jumpTitle: { fontSize: 15, fontWeight: "700", color: TEXT.strong, marginBottom: 2 },
+  jumpSub: { fontSize: 12, color: TEXT.muted },
 
-  // Missions
-  missionCard: {
-    backgroundColor: INK[800],
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: INK[700],
-  },
-  missionCount: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: TEXT.accent,
-  },
+  missionCard: { backgroundColor: INK[800], borderRadius: 16, padding: 18, marginBottom: 12, borderWidth: 1, borderColor: INK[700] },
+  missionCount: { fontSize: 13, fontWeight: "600", color: TEXT.accent },
 
-  // Sessions
-  sessionsWrap: {
-    marginTop: 8,
-  },
-  sessionRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: INK[800],
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: INK[700],
-  },
-  sessionLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  sessionDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: CLAY[600],
-  },
-  sessionName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: TEXT.primary,
-  },
-  sessionMeta: {
-    fontSize: 12,
-    color: TEXT.muted,
-    marginTop: 1,
-  },
+  sessionsWrap: { marginTop: 8 },
+  sessionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: INK[800], borderRadius: 12, padding: 14, marginBottom: 6, borderWidth: 1, borderColor: INK[700] },
+  sessionLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
+  sessionDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: CLAY[600] },
+  sessionName: { fontSize: 14, fontWeight: "600", color: TEXT.primary },
+  sessionMeta: { fontSize: 12, color: TEXT.muted, marginTop: 1 },
+
+  // Profile Modal
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
+  modalCard: { backgroundColor: INK[800], borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
+  modalTitle: { fontSize: 22, fontWeight: "700", color: TEXT.strong, fontFamily: SERIF, fontStyle: "italic" },
+  modalClose: { fontSize: 20, color: TEXT.faint, padding: 4 },
+  profileAvatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: CLAY[700], alignItems: "center", justifyContent: "center", alignSelf: "center", marginBottom: 24 },
+  profileAvatarText: { fontSize: 28, fontWeight: "700", color: TEXT.strong },
+  profileRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: INK[700] },
+  profileLabel: { fontSize: 11, fontWeight: "700", color: TEXT.faint, letterSpacing: 1.5 },
+  profileValue: { fontSize: 14, fontWeight: "500", color: TEXT.primary, textAlign: "right", flex: 1, marginLeft: 16 },
+  signOutBtn: { marginTop: 24, backgroundColor: INK[750], borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: INK[700] },
+  signOutBtnText: { fontSize: 15, fontWeight: "600", color: "#A6402E" },
 });

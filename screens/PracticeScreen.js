@@ -1,7 +1,9 @@
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,6 +11,14 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../lib/supabase";
+
+const INK = { 900: "#14100B", 800: "#1F1A13", 750: "#2A2218", 700: "#382E20" };
+const CLAY = { 400: "#D5895B", 600: "#C8643C", 700: "#A8492A" };
+const TEXT = {
+  strong: "#FCF8F1", primary: "#F0E8DA", secondary: "#CABBA6",
+  muted: "#968A76", faint: "#5F5645", accent: "#C8643C",
+};
+const SERIF = Platform.OS === "ios" ? "Georgia" : "serif";
 
 export default function PracticeScreen() {
   const router = useRouter();
@@ -33,45 +43,28 @@ export default function PracticeScreen() {
   }, []);
 
   async function loadSubjects(userId) {
-    const { data } = await supabase
-      .from("users")
-      .select("subjects")
-      .eq("id", userId)
-      .single();
+    const { data } = await supabase.from("users").select("subjects").eq("id", userId).single();
     setSubjects(data?.subjects || []);
   }
 
-async function loadTopics(subject) {
+  async function loadTopics(subject) {
     setSelectedSubject(subject);
-    const { data } = await supabase
-      .from("questions")
-      .select("topic")
-      .eq("subject", subject);
-
+    const { data } = await supabase.from("questions").select("topic").eq("subject", subject);
     if (data) {
       const unique = [...new Set(data.map((q) => q.topic))];
       setAvailableTopics(unique);
     }
   }
 
-   async function startPractice(difficulty) {
-    let query = supabase
-      .from("questions")
-      .select("*")
-      .eq("subject", selectedSubject)
-      .eq("topic", selectedTopic);
-
-    if (difficulty !== "All") {
-      query = query.eq("difficulty", difficulty);
-    }
-
+  async function startPractice(difficulty) {
+    let query = supabase.from("questions").select("*").eq("subject", selectedSubject);
+    if (selectedTopic !== "All Topics") query = query.eq("topic", selectedTopic);
+    if (difficulty !== "All") query = query.eq("difficulty", difficulty);
     const { data } = await query.order("created_at", { ascending: false });
-
     if (!data || data.length === 0) {
-      Alert.alert("No questions", "No questions available for this difficulty yet.");
+      Alert.alert("No questions", "No questions available for this selection yet.");
       return;
     }
-
     const shuffled = data.sort(() => Math.random() - 0.5).slice(0, 10);
     setQuestions(shuffled);
     setCurrentIndex(0);
@@ -82,261 +75,176 @@ async function loadTopics(subject) {
     setSelectedDifficulty(difficulty);
   }
 
-
   async function submitAnswer(answer) {
     setSelectedAnswer(answer);
     setShowResult(true);
-
     const question = questions[currentIndex];
     const isCorrect = answer === question.correct_answer;
     if (isCorrect) setScore((prev) => prev + 1);
-
     if (user) {
       await supabase.from("student_answers").insert({
-        user_id: user.id,
-        question_id: question.id,
-        selected_answer: answer,
-        is_correct: isCorrect,
+        user_id: user.id, question_id: question.id,
+        selected_answer: answer, is_correct: isCorrect,
       });
-
       if (isCorrect) {
-        const { data: profile } = await supabase
-          .from("users")
-          .select("xp, level")
-          .eq("id", user.id)
-          .single();
+        const { data: profile } = await supabase.from("users").select("xp, level").eq("id", user.id).single();
         const newXp = (profile?.xp || 0) + 10;
         const newLevel = Math.floor(newXp / 200) + 1;
-        await supabase
-          .from("users")
-          .update({ xp: newXp, level: newLevel })
-          .eq("id", user.id);
+        await supabase.from("users").update({ xp: newXp, level: newLevel }).eq("id", user.id);
       }
     }
   }
 
   function nextQuestion() {
-    if (currentIndex + 1 >= questions.length) {
-      setFinished(true);
-    } else {
-      setCurrentIndex((prev) => prev + 1);
-      setSelectedAnswer(null);
-      setShowResult(false);
-    }
+    if (currentIndex + 1 >= questions.length) { setFinished(true); }
+    else { setCurrentIndex((p) => p + 1); setSelectedAnswer(null); setShowResult(false); }
   }
 
   function getOptionStyle(option) {
-    if (!showResult) {
-      return selectedAnswer === option ? styles.optionSelected : styles.option;
-    }
-    const question = questions[currentIndex];
-    if (option === question.correct_answer) return styles.optionCorrect;
-    if (option === selectedAnswer && option !== question.correct_answer)
-      return styles.optionWrong;
+    if (!showResult) return selectedAnswer === option ? styles.optionSelected : styles.option;
+    const q = questions[currentIndex];
+    if (option === q.correct_answer) return styles.optionCorrect;
+    if (option === selectedAnswer && option !== q.correct_answer) return styles.optionWrong;
     return styles.option;
   }
 
-  function getOptionTextStyle(option) {
-    if (!showResult) {
-      return selectedAnswer === option
-        ? styles.optionTextSelected
-        : styles.optionText;
-    }
-    const question = questions[currentIndex];
-    if (option === question.correct_answer) return styles.optionTextCorrect;
-    if (option === selectedAnswer && option !== question.correct_answer)
-      return styles.optionTextWrong;
-    return styles.optionText;
+  function getOptionTextColor(option) {
+    if (!showResult) return selectedAnswer === option ? TEXT.accent : TEXT.primary;
+    const q = questions[currentIndex];
+    if (option === q.correct_answer) return "#93A877";
+    if (option === selectedAnswer && option !== q.correct_answer) return "#A6402E";
+    return TEXT.primary;
   }
 
+  // ── Subject selection ──
   if (!selectedSubject) {
     return (
-      <ScrollView style={styles.container}>
-        <View style={styles.inner}>
-          <TouchableOpacity
-            style={styles.backLink}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.backLinkText}>← Back</Text>
-          </TouchableOpacity>
-
-          <Text style={styles.title}>Practice questions</Text>
-          <Text style={styles.subtitle}>
-            Pick a subject to start practicing
-          </Text>
-
-          {subjects.map((sub) => (
-            <TouchableOpacity
-              key={sub}
-              style={styles.subjectCard}
-              onPress={() => loadTopics(sub)}
-            >
-              <Text style={styles.subjectCardText}>{sub}</Text>
-              <Text style={styles.subjectArrow}>→</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+      <View style={styles.container}>
+        <LinearGradient colors={[INK[900], "#1A1208", "#0A0806"]} style={StyleSheet.absoluteFill} />
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <View style={styles.inner}>
+            <Text style={styles.screenTitle}>Practice</Text>
+            <Text style={styles.screenSub}>Pick a subject to start</Text>
+            {subjects.map((sub) => (
+              <TouchableOpacity key={sub} style={styles.listCard} onPress={() => loadTopics(sub)}>
+                <Text style={styles.listCardText}>{sub}</Text>
+                <Text style={styles.listArrow}>→</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
     );
   }
 
+  // ── Topic selection ──
   if (!selectedTopic) {
     return (
-      <ScrollView style={styles.container}>
-        <View style={styles.inner}>
-          <TouchableOpacity
-            style={styles.backLink}
-            onPress={() => {
-              setSelectedSubject(null);
-              setAvailableTopics([]);
-            }}
-          >
-            <Text style={styles.backLinkText}>← Back</Text>
-          </TouchableOpacity>
-
-          <Text style={styles.title}>{selectedSubject}</Text>
-          <Text style={styles.subtitle}>
-            Pick a topic or practice everything
-          </Text>
-
-          <TouchableOpacity
-            style={styles.allTopicsCard}
-            onPress={() => setSelectedTopic("All Topics")}
-          >
-            <Text style={styles.allTopicsText}>All Topics (mixed)</Text>
-            <Text style={styles.subjectArrow}>→</Text>
-          </TouchableOpacity>
-
-          {availableTopics.map((topic) => (
-            <TouchableOpacity
-              key={topic}
-              style={styles.subjectCard}
-              onPress={() => setSelectedTopic(topic)}
-            >
-              <Text style={styles.subjectCardText}>{topic}</Text>
-              <Text style={styles.subjectArrow}>→</Text>
+      <View style={styles.container}>
+        <LinearGradient colors={[INK[900], "#1A1208", "#0A0806"]} style={StyleSheet.absoluteFill} />
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <View style={styles.inner}>
+            <TouchableOpacity onPress={() => { setSelectedSubject(null); setAvailableTopics([]); }}>
+              <Text style={styles.backText}>← Back</Text>
             </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+            <Text style={styles.screenTitle}>{selectedSubject}</Text>
+            <Text style={styles.screenSub}>Pick a topic or practice everything</Text>
+            <TouchableOpacity style={styles.primaryListCard} onPress={() => setSelectedTopic("All Topics")}>
+              <LinearGradient colors={[CLAY[600], CLAY[700]]} style={styles.primaryListInner}>
+                <Text style={styles.primaryListText}>All Topics (mixed)</Text>
+                <Text style={styles.primaryListArrow}>→</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+            {availableTopics.map((topic) => (
+              <TouchableOpacity key={topic} style={styles.listCard} onPress={() => setSelectedTopic(topic)}>
+                <Text style={styles.listCardText}>{topic}</Text>
+                <Text style={styles.listArrow}>→</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
     );
   }
 
+  // ── Difficulty selection ──
   if (!selectedDifficulty) {
     return (
-      <ScrollView style={styles.container}>
-        <View style={styles.inner}>
-          <TouchableOpacity
-            style={styles.backLink}
-            onPress={() => setSelectedTopic(null)}
-          >
-            <Text style={styles.backLinkText}>← Back</Text>
-          </TouchableOpacity>
-
-          <Text style={styles.title}>{selectedTopic}</Text>
-          <Text style={styles.subtitle}>
-            Pick a difficulty level
-          </Text>
-
-          <TouchableOpacity
-            style={styles.allTopicsCard}
-            onPress={() => startPractice("All")}
-          >
-            <Text style={styles.allTopicsText}>All Difficulties (mixed)</Text>
-            <Text style={[styles.subjectArrow, { color: "#fff" }]}>→</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.difficultyCard, styles.diffEasy]}
-            onPress={() => startPractice("easy")}
-          >
-            <View>
-              <Text style={styles.diffLabel}>Easy</Text>
-              <Text style={styles.diffDesc}>Build your foundation</Text>
-            </View>
-            <Text style={styles.subjectArrow}>→</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.difficultyCard, styles.diffMedium]}
-            onPress={() => startPractice("medium")}
-          >
-            <View>
-              <Text style={styles.diffLabel}>Medium</Text>
-              <Text style={styles.diffDesc}>Challenge yourself</Text>
-            </View>
-            <Text style={styles.subjectArrow}>→</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.difficultyCard, styles.diffHard]}
-            onPress={() => startPractice("hard")}
-          >
-            <View>
-              <Text style={styles.diffLabel}>Hard</Text>
-              <Text style={styles.diffDesc}>Test your mastery</Text>
-            </View>
-            <Text style={styles.subjectArrow}>→</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+      <View style={styles.container}>
+        <LinearGradient colors={[INK[900], "#1A1208", "#0A0806"]} style={StyleSheet.absoluteFill} />
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <View style={styles.inner}>
+            <TouchableOpacity onPress={() => setSelectedTopic(null)}>
+              <Text style={styles.backText}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.screenTitle}>{selectedTopic}</Text>
+            <Text style={styles.screenSub}>Pick a difficulty level</Text>
+            <TouchableOpacity style={styles.primaryListCard} onPress={() => startPractice("All")}>
+              <LinearGradient colors={[CLAY[600], CLAY[700]]} style={styles.primaryListInner}>
+                <Text style={styles.primaryListText}>All Difficulties</Text>
+                <Text style={styles.primaryListArrow}>→</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.diffCard, { borderColor: "#93A877" }]} onPress={() => startPractice("easy")}>
+              <View>
+                <Text style={[styles.diffLabel, { color: "#93A877" }]}>Easy</Text>
+                <Text style={styles.diffDesc}>Build your foundation</Text>
+              </View>
+              <Text style={styles.listArrow}>→</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.diffCard, { borderColor: "#D7A24E" }]} onPress={() => startPractice("medium")}>
+              <View>
+                <Text style={[styles.diffLabel, { color: "#D7A24E" }]}>Medium</Text>
+                <Text style={styles.diffDesc}>Challenge yourself</Text>
+              </View>
+              <Text style={styles.listArrow}>→</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.diffCard, { borderColor: "#A6402E" }]} onPress={() => startPractice("hard")}>
+              <View>
+                <Text style={[styles.diffLabel, { color: "#A6402E" }]}>Hard</Text>
+                <Text style={styles.diffDesc}>Test your mastery</Text>
+              </View>
+              <Text style={styles.listArrow}>→</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </View>
     );
   }
 
-
+  // ── Finished ──
   if (finished) {
-    const percentage = Math.round((score / questions.length) * 100);
+    const pct = Math.round((score / questions.length) * 100);
     return (
       <View style={styles.container}>
-        <View style={styles.finishedCard}>
-          <Text style={styles.finishedEmoji}>
-            {percentage >= 80 ? "🎉" : percentage >= 50 ? "💪" : "📚"}
-          </Text>
-          <Text style={styles.finishedTitle}>Practice complete!</Text>
-          <Text style={styles.finishedSubject}>{selectedSubject}</Text>
-
-          <View style={styles.scoreCircle}>
-            <Text style={styles.scoreNumber}>{score}/{questions.length}</Text>
-            <Text style={styles.scorePercent}>{percentage}%</Text>
+        <LinearGradient colors={[INK[900], "#1A1208", "#0A0806"]} style={StyleSheet.absoluteFill} />
+        <View style={styles.finishedWrap}>
+          <Text style={styles.finishedEmoji}>{pct >= 80 ? "🎉" : pct >= 50 ? "💪" : "📚"}</Text>
+          <Text style={styles.finishedTitle}>Practice complete</Text>
+          <Text style={styles.finishedSub}>{selectedSubject} · {selectedTopic}</Text>
+          <View style={styles.scoreRing}>
+            <Text style={styles.scoreNum}>{score}/{questions.length}</Text>
+            <Text style={styles.scorePct}>{pct}%</Text>
           </View>
-
-          <Text style={styles.scoreMessage}>
-            {percentage >= 80
-              ? "Excellent! You're crushing it."
-              : percentage >= 50
-              ? "Good effort. Keep practicing!"
-              : "Keep going. Review the explanations."}
+          <Text style={styles.scoreMsg}>
+            {pct >= 80 ? "Excellent. You're crushing it." : pct >= 50 ? "Good effort. Keep practicing." : "Keep going. Review the explanations."}
           </Text>
-
-          <TouchableOpacity
-            style={styles.retryBtn}
-            onPress={() => startPractice(selectedSubject)}
-          >
-            <Text style={styles.retryBtnText}>Try again</Text>
+          <TouchableOpacity onPress={() => { setSelectedDifficulty(null); setQuestions([]); }}>
+            <LinearGradient colors={[CLAY[600], CLAY[700]]} style={styles.finBtn}>
+              <Text style={styles.finBtnText}>Try again</Text>
+            </LinearGradient>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.doneBtn}
-            onPress={() => {
-              setSelectedSubject(null);
-              setSelectedTopic(null);
-              setSelectedDifficulty(null);
-              setAvailableTopics([]);
-              setQuestions([]);
-            }}
-          >
-            <Text style={styles.doneBtnText}>Pick another subject</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.backBtnText}>Back to dashboard</Text>
+          <TouchableOpacity style={styles.finBtnOutline} onPress={() => {
+            setSelectedSubject(null); setSelectedTopic(null); setSelectedDifficulty(null); setAvailableTopics([]); setQuestions([]);
+          }}>
+            <Text style={styles.finBtnOutlineText}>Pick another subject</Text>
           </TouchableOpacity>
         </View>
       </View>
     );
   }
 
+  // ── Questions ──
   const question = questions[currentIndex];
   const options = [
     { letter: "A", text: question.option_a },
@@ -346,301 +254,153 @@ async function loadTopics(subject) {
   ];
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.inner}>
-        <TouchableOpacity
-          style={styles.backLink}
-          onPress={() => {
-            setSelectedDifficulty(null);
-            setQuestions([]);
-            setCurrentIndex(0);
-            setSelectedAnswer(null);
-            setShowResult(false);
-          }}
-        >
-          <Text style={styles.backLinkText}>← Back to topics</Text>
-        </TouchableOpacity>
-        <View style={styles.progressHeader}>
-          <Text style={styles.progressLabel}>
-            Question {currentIndex + 1} of {questions.length}
-          </Text>
-          <Text style={styles.topicBadge}>{question.topic}</Text>
-        </View>
-
-        <View style={styles.progressBarBg}>
-          <View
-            style={[
-              styles.progressBarFill,
-              {
-                width: `${((currentIndex + 1) / questions.length) * 100}%`,
-              },
-            ]}
-          />
-        </View>
-
-        <View style={styles.questionCard}>
-          <Text style={styles.questionText}>{question.question_text}</Text>
-        </View>
-
-        {options.map((opt) => (
-          <TouchableOpacity
-            key={opt.letter}
-            style={getOptionStyle(opt.letter)}
-            onPress={() => !showResult && submitAnswer(opt.letter)}
-            disabled={showResult}
-          >
-            <Text style={styles.optionLetter}>{opt.letter}</Text>
-            <Text style={getOptionTextStyle(opt.letter)}>{opt.text}</Text>
+    <View style={styles.container}>
+      <LinearGradient colors={[INK[900], "#1A1208", "#0A0806"]} style={StyleSheet.absoluteFill} />
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.inner}>
+          <TouchableOpacity onPress={() => { setSelectedDifficulty(null); setQuestions([]); setCurrentIndex(0); setSelectedAnswer(null); setShowResult(false); }}>
+            <Text style={styles.backText}>← Exit practice</Text>
           </TouchableOpacity>
-        ))}
 
-        {showResult && (
-          <View style={styles.explanationCard}>
-            <Text style={styles.explanationTitle}>
-              {selectedAnswer === question.correct_answer
-                ? "✅ Correct! +10 XP"
-                : "❌ Incorrect"}
-            </Text>
-            <Text style={styles.explanationText}>{question.explanation}</Text>
+          <View style={styles.qHeader}>
+            <Text style={styles.qCount}>Question {currentIndex + 1} of {questions.length}</Text>
+            <View style={styles.topicBadge}>
+              <Text style={styles.topicBadgeText}>{question.topic}</Text>
+            </View>
           </View>
-        )}
 
-        {showResult && (
-          <TouchableOpacity style={styles.nextBtn} onPress={nextQuestion}>
-            <Text style={styles.nextBtnText}>
-              {currentIndex + 1 >= questions.length
-                ? "See results"
-                : "Next question"}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </ScrollView>
+          <View style={styles.progressTrack}>
+            <LinearGradient
+              colors={[CLAY[600], CLAY[400]]}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={[styles.progressFill, { width: `${((currentIndex + 1) / questions.length) * 100}%` }]}
+            />
+          </View>
+
+          <View style={styles.questionCard}>
+            <Text style={styles.questionText}>{question.question_text}</Text>
+          </View>
+
+          {options.map((opt) => (
+            <TouchableOpacity
+              key={opt.letter}
+              style={getOptionStyle(opt.letter)}
+              onPress={() => !showResult && submitAnswer(opt.letter)}
+              disabled={showResult}
+            >
+              <Text style={[styles.optionLetter, { color: getOptionTextColor(opt.letter) }]}>{opt.letter}</Text>
+              <Text style={[styles.optionText, { color: getOptionTextColor(opt.letter) }]}>{opt.text}</Text>
+            </TouchableOpacity>
+          ))}
+
+          {showResult && (
+            <View style={styles.explanationCard}>
+              <Text style={styles.explanationTitle}>
+                {selectedAnswer === question.correct_answer ? "✓  Correct · +10 XP" : "✗  Incorrect"}
+              </Text>
+              <Text style={styles.explanationText}>{question.explanation}</Text>
+            </View>
+          )}
+
+          {showResult && (
+            <TouchableOpacity onPress={nextQuestion}>
+              <LinearGradient colors={[CLAY[600], CLAY[700]]} style={styles.nextBtn}>
+                <Text style={styles.nextBtnText}>
+                  {currentIndex + 1 >= questions.length ? "See results" : "Next question"}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0F0F14" },
-  inner: { padding: 20, paddingTop: 60, paddingBottom: 40 },
-  backLink: { marginBottom: 20 },
-  backLinkText: { color: "#8888A0", fontSize: 15 },
-  title: { fontSize: 26, fontWeight: "700", color: "#F1F1F3", marginBottom: 8 },
-  subtitle: { fontSize: 15, color: "#8888A0", marginBottom: 24 },
-  subjectCard: {
-    backgroundColor: "#1A1A24",
-    borderRadius: 14,
-    padding: 18,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#2A2A3A",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  container: { flex: 1 },
+  inner: { paddingHorizontal: 20, paddingTop: 64, paddingBottom: 40 },
+
+  screenTitle: { fontSize: 28, fontWeight: "700", color: TEXT.strong, fontFamily: SERIF, fontStyle: "italic", marginBottom: 6 },
+  screenSub: { fontSize: 14, color: TEXT.muted, marginBottom: 24 },
+  backText: { fontSize: 14, color: TEXT.muted, marginBottom: 20 },
+
+  listCard: {
+    backgroundColor: INK[800], borderRadius: 14, padding: 18, marginBottom: 8,
+    borderWidth: 1, borderColor: INK[700],
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
   },
-  subjectCardText: { fontSize: 16, fontWeight: "600", color: "#F1F1F3" },
-  subjectArrow: { fontSize: 18, color: "#7C3AED" },
-  progressHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
+  listCardText: { fontSize: 15, fontWeight: "600", color: TEXT.primary },
+  listArrow: { fontSize: 16, color: TEXT.faint },
+
+  primaryListCard: { marginBottom: 8 },
+  primaryListInner: { borderRadius: 14, padding: 18, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  primaryListText: { fontSize: 15, fontWeight: "700", color: "#fff" },
+  primaryListArrow: { fontSize: 16, color: "rgba(255,255,255,0.5)" },
+
+  diffCard: {
+    backgroundColor: INK[800], borderRadius: 14, padding: 18, marginBottom: 8,
+    borderWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center",
   },
-  progressLabel: { fontSize: 14, color: "#8888A0" },
-  topicBadge: {
-    fontSize: 12,
-    color: "#7C3AED",
-    backgroundColor: "#1E1040",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  progressBarBg: {
-    height: 6,
-    backgroundColor: "#2A2A3A",
-    borderRadius: 3,
-    overflow: "hidden",
-    marginBottom: 24,
-  },
-  progressBarFill: { height: 6, backgroundColor: "#7C3AED", borderRadius: 3 },
-  questionCard: {
-    backgroundColor: "#1A1A24",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#2A2A3A",
-  },
-  questionText: { fontSize: 17, color: "#F1F1F3", lineHeight: 26 },
+  diffLabel: { fontSize: 16, fontWeight: "700", marginBottom: 2 },
+  diffDesc: { fontSize: 12, color: TEXT.muted },
+
+  qHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  qCount: { fontSize: 13, color: TEXT.muted },
+  topicBadge: { backgroundColor: CLAY[700] + "30", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  topicBadgeText: { fontSize: 11, color: TEXT.accent, fontWeight: "600" },
+
+  progressTrack: { height: 4, backgroundColor: INK[750], borderRadius: 2, overflow: "hidden", marginBottom: 20 },
+  progressFill: { height: 4, borderRadius: 2 },
+
+  questionCard: { backgroundColor: INK[800], borderRadius: 14, padding: 20, marginBottom: 14, borderWidth: 1, borderColor: INK[700] },
+  questionText: { fontSize: 16, color: TEXT.primary, lineHeight: 24 },
+
   option: {
-    backgroundColor: "#1A1A24",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#2A2A3A",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+    backgroundColor: INK[800], borderRadius: 12, padding: 16, marginBottom: 8,
+    borderWidth: 1, borderColor: INK[700], flexDirection: "row", alignItems: "center", gap: 12,
   },
   optionSelected: {
-    backgroundColor: "#1E1040",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#7C3AED",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+    backgroundColor: CLAY[700] + "15", borderRadius: 12, padding: 16, marginBottom: 8,
+    borderWidth: 1, borderColor: CLAY[600], flexDirection: "row", alignItems: "center", gap: 12,
   },
   optionCorrect: {
-    backgroundColor: "#0A1A0E",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#22C55E",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+    backgroundColor: "#93A87715", borderRadius: 12, padding: 16, marginBottom: 8,
+    borderWidth: 1, borderColor: "#93A877", flexDirection: "row", alignItems: "center", gap: 12,
   },
   optionWrong: {
-    backgroundColor: "#1C1012",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#EF4444",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+    backgroundColor: "#A6402E15", borderRadius: 12, padding: 16, marginBottom: 8,
+    borderWidth: 1, borderColor: "#A6402E", flexDirection: "row", alignItems: "center", gap: 12,
   },
-  optionLetter: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#8888A0",
-    width: 24,
-  },
-  optionText: { fontSize: 15, color: "#F1F1F3", flex: 1 },
-  optionTextSelected: { fontSize: 15, color: "#7C3AED", flex: 1 },
-  optionTextCorrect: { fontSize: 15, color: "#22C55E", flex: 1 },
-  optionTextWrong: { fontSize: 15, color: "#EF4444", flex: 1 },
+  optionLetter: { fontSize: 14, fontWeight: "700", width: 22 },
+  optionText: { fontSize: 14, flex: 1, lineHeight: 20 },
+
   explanationCard: {
-    backgroundColor: "#1A1A24",
-    borderRadius: 14,
-    padding: 16,
-    marginTop: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#2A2A3A",
+    backgroundColor: INK[800], borderRadius: 14, padding: 16, marginTop: 4, marginBottom: 8,
+    borderWidth: 1, borderColor: INK[700],
   },
-  explanationTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#F1F1F3",
-    marginBottom: 8,
-  },
-  explanationText: { fontSize: 14, color: "#8888A0", lineHeight: 22 },
-  nextBtn: {
-    backgroundColor: "#7C3AED",
-    height: 54,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-  },
-  nextBtnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  finishedCard: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-    paddingTop: 80,
-  },
-  finishedEmoji: { fontSize: 64, marginBottom: 16 },
-  finishedTitle: { fontSize: 28, fontWeight: "700", color: "#F1F1F3", marginBottom: 8 },
-  finishedSubject: { fontSize: 16, color: "#8888A0", marginBottom: 32 },
-  scoreCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "#1A1A24",
-    borderWidth: 3,
-    borderColor: "#7C3AED",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-  },
-  scoreNumber: { fontSize: 28, fontWeight: "700", color: "#F1F1F3" },
-  scorePercent: { fontSize: 14, color: "#7C3AED" },
-  scoreMessage: { fontSize: 16, color: "#8888A0", marginBottom: 32, textAlign: "center" },
-  retryBtn: {
-    backgroundColor: "#7C3AED",
-    height: 50,
-    borderRadius: 14,
-    paddingHorizontal: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-    width: "100%",
-  },
-  retryBtnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  doneBtn: {
-    backgroundColor: "#1A1A24",
-    height: 50,
-    borderRadius: 14,
-    paddingHorizontal: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#7C3AED",
-    width: "100%",
-  },
-  doneBtnText: { color: "#7C3AED", fontSize: 16, fontWeight: "600" },
-  backBtn: {
-    height: 50,
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-  },
-  backBtnText: { color: "#8888A0", fontSize: 14 },
+  explanationTitle: { fontSize: 14, fontWeight: "600", color: TEXT.primary, marginBottom: 8 },
+  explanationText: { fontSize: 13, color: TEXT.muted, lineHeight: 20 },
 
+  nextBtn: { borderRadius: 14, paddingVertical: 18, alignItems: "center", marginTop: 4 },
+  nextBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 
-allTopicsCard: {
-    backgroundColor: "#7C3AED",
-    borderRadius: 14,
-    padding: 18,
-    marginBottom: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  finishedWrap: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24, paddingTop: 100 },
+  finishedEmoji: { fontSize: 56, marginBottom: 14 },
+  finishedTitle: { fontSize: 28, fontWeight: "700", color: TEXT.strong, fontFamily: SERIF, fontStyle: "italic" },
+  finishedSub: { fontSize: 14, color: TEXT.muted, marginTop: 4, marginBottom: 28 },
+  scoreRing: {
+    width: 110, height: 110, borderRadius: 55, backgroundColor: INK[800],
+    borderWidth: 3, borderColor: CLAY[600], alignItems: "center", justifyContent: "center", marginBottom: 14,
   },
-  allTopicsText: { fontSize: 16, fontWeight: "600", color: "#fff" },
-
-  difficultyCard: {
-    borderRadius: 14,
-    padding: 18,
-    marginBottom: 10,
-    borderWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  scoreNum: { fontSize: 26, fontWeight: "800", color: TEXT.strong },
+  scorePct: { fontSize: 13, color: TEXT.accent },
+  scoreMsg: { fontSize: 15, color: TEXT.muted, marginBottom: 28, textAlign: "center" },
+  finBtn: { borderRadius: 14, paddingVertical: 16, paddingHorizontal: 40, alignItems: "center", width: 260, marginBottom: 10 },
+  finBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  finBtnOutline: {
+    borderRadius: 14, paddingVertical: 16, paddingHorizontal: 40,
+    alignItems: "center", width: 260, borderWidth: 1, borderColor: INK[700],
   },
-  diffEasy: {
-    backgroundColor: "#0A1A0E",
-    borderColor: "#22C55E",
-  },
-  diffMedium: {
-    backgroundColor: "#1A1806",
-    borderColor: "#EAB308",
-  },
-  diffHard: {
-    backgroundColor: "#1C1012",
-    borderColor: "#EF4444",
-  },
-  diffLabel: { fontSize: 16, fontWeight: "600", color: "#F1F1F3", marginBottom: 2 },
-  diffDesc: { fontSize: 13, color: "#8888A0" },
-
+  finBtnOutlineText: { color: TEXT.secondary, fontSize: 15, fontWeight: "600" },
 });
-

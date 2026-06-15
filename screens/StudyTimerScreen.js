@@ -1,387 +1,212 @@
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
-    Alert,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    Vibration,
-    View,
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../lib/supabase";
 
-const SUBJECTS = [
-  "SAT Math",
-  "SAT Reading",
-  "SAT Writing",
-  "AP Calculus",
-  "AP Physics",
-  "AP History",
-  "AP English",
-  "ACT Prep",
-  "General Study",
-];
+const INK = { 900: "#14100B", 800: "#1F1A13", 750: "#2A2218", 700: "#382E20" };
+const CLAY = { 400: "#D5895B", 600: "#C8643C", 700: "#A8492A" };
+const TEXT = { strong: "#FCF8F1", primary: "#F0E8DA", secondary: "#CABBA6", muted: "#968A76", faint: "#5F5645", accent: "#C8643C" };
+const SERIF = Platform.OS === "ios" ? "Georgia" : "serif";
 
 export default function StudyTimerScreen() {
   const router = useRouter();
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [seconds, setSeconds] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
-  const [isFinished, setIsFinished] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [finished, setFinished] = useState(false);
   const intervalRef = useRef(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
+      if (user) {
+        supabase.from("users").select("*").eq("id", user.id).single()
+          .then(({ data }) => setProfile(data));
+      }
     });
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
-  useEffect(() => {
-    if (isRunning) {
-      intervalRef.current = setInterval(() => {
-        setSeconds((prev) => prev + 1);
-      }, 1000);
-    } else {
-      clearInterval(intervalRef.current);
-    }
-    return () => clearInterval(intervalRef.current);
-  }, [isRunning]);
-
-  function formatTime(totalSeconds) {
-    const hrs = Math.floor(totalSeconds / 3600);
-    const mins = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-    if (hrs > 0) {
-      return `${hrs}:${mins.toString().padStart(2, "0")}:${secs
-        .toString()
-        .padStart(2, "0")}`;
-    }
-    return `${mins.toString().padStart(2, "0")}:${secs
-      .toString()
-      .padStart(2, "0")}`;
-  }
-
-  function startSession() {
-    if (!selectedSubject) {
-      Alert.alert("Pick a subject", "Select what you're studying first.");
-      return;
-    }
-    setIsRunning(true);
-    setIsFinished(false);
+  function startTimer(subject) {
+    setSelectedSubject(subject);
     setSeconds(0);
+    setRunning(true);
+    setFinished(false);
+    intervalRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
   }
 
-  function pauseSession() {
-    setIsRunning(false);
+  function pauseTimer() {
+    clearInterval(intervalRef.current);
+    setRunning(false);
   }
 
-  function resumeSession() {
-    setIsRunning(true);
+  function resumeTimer() {
+    setRunning(true);
+    intervalRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
   }
 
-  async function finishSession() {
-    setIsRunning(false);
-    setIsFinished(true);
-    Vibration.vibrate(500);
-
-    if (!user) return;
-
-    const durationMin = Math.max(1, Math.round(seconds / 60));
-    const xpEarned = durationMin * 2;
-    const today = new Date().toISOString().split("T")[0];
-
-    const { error } = await supabase.from("study_sessions").insert({
-      user_id: user.id,
-      subject: selectedSubject,
-      duration_min: durationMin,
-      xp_earned: xpEarned,
-      date: today,
-    });
-
-    if (error) {
-      Alert.alert("Error saving session", error.message);
-      return;
-    }
-
-    const { data: profile } = await supabase
-      .from("users")
-      .select("xp, level")
-      .eq("id", user.id)
-      .single();
-
-    const newXp = (profile?.xp || 0) + xpEarned;
-    const newLevel = Math.floor(newXp / 200) + 1;
-    await supabase
-      .from("users")
-      .update({ xp: newXp, level: newLevel })
-      .eq("id", user.id);
-
-    const { data: streakData } = await supabase
-      .from("streaks")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
-
-    const lastDate = streakData?.last_study_date;
-    let newStreak = streakData?.current_streak || 0;
-
-    if (lastDate !== today) {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split("T")[0];
-
-      if (lastDate === yesterdayStr) {
-        newStreak = newStreak + 1;
-      } else if (lastDate !== today) {
-        newStreak = 1;
+  async function stopTimer() {
+    clearInterval(intervalRef.current);
+    setRunning(false);
+    setFinished(true);
+    const minutes = Math.max(Math.floor(seconds / 60), 1);
+    const xpEarned = minutes * 2;
+    if (user) {
+      const today = new Date().toISOString().split("T")[0];
+      await supabase.from("study_sessions").insert({
+        user_id: user.id, subject: selectedSubject,
+        duration_min: minutes, xp_earned: xpEarned, date: today,
+      });
+      const { data: p } = await supabase.from("users").select("xp, level").eq("id", user.id).single();
+      const newXp = (p?.xp || 0) + xpEarned;
+      const newLevel = Math.floor(newXp / 200) + 1;
+      await supabase.from("users").update({ xp: newXp, level: newLevel }).eq("id", user.id);
+      const { data: s } = await supabase.from("streaks").select("*").eq("user_id", user.id).single();
+      if (s?.last_study_date !== today) {
+        const newStreak = (s?.current_streak || 0) + 1;
+        const longest = Math.max(newStreak, s?.longest_streak || 0);
+        await supabase.from("streaks").update({ current_streak: newStreak, longest_streak: longest, last_study_date: today }).eq("user_id", user.id);
       }
     }
-
-    const longest = Math.max(newStreak, streakData?.longest_streak || 0);
-    await supabase
-      .from("streaks")
-      .update({
-        current_streak: newStreak,
-        longest_streak: longest,
-        last_study_date: today,
-      })
-      .eq("user_id", user.id);
   }
 
-  function resetAndGoBack() {
-    setSeconds(0);
-    setIsRunning(false);
-    setIsFinished(false);
-    setSelectedSubject(null);
-    router.back();
-  }
+  const formatTime = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+  };
 
-  const durationMin = Math.max(1, Math.round(seconds / 60));
-  const xpEarned = durationMin * 2;
-
-  if (isFinished) {
+  // ── Subject picker ──
+  if (!selectedSubject && !finished) {
     return (
       <View style={styles.container}>
-        <View style={styles.finishedCard}>
-          <Text style={styles.finishedEmoji}>🎉</Text>
-          <Text style={styles.finishedTitle}>Session complete!</Text>
-          <Text style={styles.finishedSubject}>{selectedSubject}</Text>
+        <LinearGradient colors={[INK[900], "#1A1208", "#0A0806"]} style={StyleSheet.absoluteFill} />
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <View style={styles.inner}>
+            <Text style={styles.title}>Start a study session</Text>
+            <Text style={styles.sub}>Pick your subject, then hit start.</Text>
+            {(profile?.subjects || []).map((sub) => (
+              <TouchableOpacity key={sub} style={styles.subjectChip} onPress={() => startTimer(sub)}>
+                <Text style={styles.subjectChipText}>{sub}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
-          <View style={styles.finishedStats}>
-            <View style={styles.finishedStat}>
-              <Text style={styles.finishedStatNumber}>{durationMin}</Text>
-              <Text style={styles.finishedStatLabel}>minutes</Text>
+  // ── Finished ──
+  if (finished) {
+    const minutes = Math.max(Math.floor(seconds / 60), 1);
+    const xpEarned = minutes * 2;
+    return (
+      <View style={styles.container}>
+        <LinearGradient colors={[INK[900], "#1A1208", "#0A0806"]} style={StyleSheet.absoluteFill} />
+        <View style={styles.finWrap}>
+          <Text style={styles.finEmoji}>🎉</Text>
+          <Text style={styles.finTitle}>Session complete</Text>
+          <Text style={styles.finSub}>{selectedSubject}</Text>
+          <View style={styles.finStats}>
+            <View style={styles.finStat}>
+              <Text style={styles.finStatNum}>{formatTime(seconds)}</Text>
+              <Text style={styles.finStatLabel}>Duration</Text>
             </View>
-            <View style={styles.finishedStat}>
-              <Text style={styles.finishedStatNumber}>+{xpEarned}</Text>
-              <Text style={styles.finishedStatLabel}>XP earned</Text>
+            <View style={styles.finDivider} />
+            <View style={styles.finStat}>
+              <Text style={styles.finStatNum}>+{xpEarned}</Text>
+              <Text style={styles.finStatLabel}>XP earned</Text>
             </View>
           </View>
-
-          <TouchableOpacity style={styles.doneBtn} onPress={resetAndGoBack}>
-            <Text style={styles.doneBtnText}>Back to dashboard</Text>
+          <TouchableOpacity onPress={() => { setSelectedSubject(null); setFinished(false); setSeconds(0); }}>
+            <LinearGradient colors={[CLAY[600], CLAY[700]]} style={styles.finBtn}>
+              <Text style={styles.finBtnText}>Start another session</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
     );
   }
 
-  if (isRunning || seconds > 0) {
-    return (
-      <View style={styles.container}>
-        <TouchableOpacity style={styles.backLink} onPress={resetAndGoBack}>
-          <Text style={styles.backLinkText}>← Cancel</Text>
-        </TouchableOpacity>
-
-        <View style={styles.timerArea}>
-          <Text style={styles.timerSubject}>{selectedSubject}</Text>
-          <Text style={styles.timer}>{formatTime(seconds)}</Text>
-          <Text style={styles.timerXp}>+{xpEarned} XP so far</Text>
-        </View>
-
-        <View style={styles.timerButtons}>
-          {isRunning ? (
-            <TouchableOpacity style={styles.pauseBtn} onPress={pauseSession}>
-              <Text style={styles.pauseBtnText}>Pause</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.resumeBtn}
-              onPress={resumeSession}
-            >
-              <Text style={styles.resumeBtnText}>Resume</Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity style={styles.finishBtn} onPress={finishSession}>
-            <Text style={styles.finishBtnText}>Finish</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
+  // ── Timer running ──
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.backLink} onPress={() => router.back()}>
-        <Text style={styles.backLinkText}>← Back</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.title}>Start a study session</Text>
-      <Text style={styles.subtitle}>Pick your subject, then hit start</Text>
-
-      <View style={styles.chips}>
-        {SUBJECTS.map((subject) => (
-          <TouchableOpacity
-            key={subject}
-            style={[
-              styles.chip,
-              selectedSubject === subject && styles.chipSelected,
-            ]}
-            onPress={() => setSelectedSubject(subject)}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                selectedSubject === subject && styles.chipTextSelected,
-              ]}
-            >
-              {subject}
-            </Text>
+      <LinearGradient colors={[INK[900], "#1A1208", "#0A0806"]} style={StyleSheet.absoluteFill} />
+      <View style={styles.timerWrap}>
+        <Text style={styles.timerSubject}>{selectedSubject}</Text>
+        <View style={styles.timerRing}>
+          <Text style={styles.timerText}>{formatTime(seconds)}</Text>
+        </View>
+        <Text style={styles.timerHint}>{running ? "Focus. You're doing great." : "Paused"}</Text>
+        <View style={styles.timerBtns}>
+          {running ? (
+            <TouchableOpacity style={styles.timerBtnOutline} onPress={pauseTimer}>
+              <Text style={styles.timerBtnOutlineText}>Pause</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={resumeTimer}>
+              <LinearGradient colors={[CLAY[600], CLAY[700]]} style={styles.timerBtnFill}>
+                <Text style={styles.timerBtnFillText}>Resume</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.timerBtnOutline} onPress={stopTimer}>
+            <Text style={styles.timerBtnOutlineText}>Finish</Text>
           </TouchableOpacity>
-        ))}
+        </View>
       </View>
-
-      <TouchableOpacity style={styles.startBtn} onPress={startSession}>
-        <Text style={styles.startBtnText}>Start studying</Text>
-      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0F0F14",
-    padding: 20,
-    paddingTop: 60,
+  container: { flex: 1 },
+  inner: { paddingHorizontal: 20, paddingTop: 64, paddingBottom: 40 },
+  title: { fontSize: 28, fontWeight: "700", color: TEXT.strong, fontFamily: SERIF, fontStyle: "italic", marginBottom: 6 },
+  sub: { fontSize: 14, color: TEXT.muted, marginBottom: 24 },
+  subjectChip: {
+    backgroundColor: INK[800], borderRadius: 12, paddingVertical: 16, paddingHorizontal: 20,
+    marginBottom: 8, borderWidth: 1, borderColor: INK[700],
   },
-  backLink: { marginBottom: 20 },
-  backLinkText: { color: "#8888A0", fontSize: 15 },
-  title: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: "#F1F1F3",
-    marginBottom: 8,
-  },
-  subtitle: { fontSize: 15, color: "#8888A0", marginBottom: 28 },
-  chips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 32,
-  },
-  chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#2A2A3A",
-    backgroundColor: "#1A1A24",
-  },
-  chipSelected: { backgroundColor: "#EDE9FE", borderColor: "#7C3AED" },
-  chipText: { fontSize: 14, color: "#8888A0" },
-  chipTextSelected: { color: "#7C3AED", fontWeight: "600" },
-  startBtn: {
-    backgroundColor: "#7C3AED",
-    height: 54,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  startBtnText: { color: "#fff", fontSize: 17, fontWeight: "600" },
-  timerArea: { flex: 1, justifyContent: "center", alignItems: "center" },
-  timerSubject: {
-    fontSize: 16,
-    color: "#8888A0",
-    marginBottom: 12,
-  },
-  timer: {
-    fontSize: 72,
-    fontWeight: "200",
-    color: "#F1F1F3",
-    fontVariant: ["tabular-nums"],
-  },
-  timerXp: {
-    fontSize: 16,
-    color: "#7C3AED",
-    marginTop: 12,
-  },
-  timerButtons: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 40,
-  },
-  pauseBtn: {
-    flex: 1,
-    height: 54,
-    borderRadius: 14,
-    backgroundColor: "#1A1A24",
-    borderWidth: 1,
-    borderColor: "#2A2A3A",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pauseBtnText: { color: "#8888A0", fontSize: 16, fontWeight: "600" },
-  resumeBtn: {
-    flex: 1,
-    height: 54,
-    borderRadius: 14,
-    backgroundColor: "#1A1A24",
-    borderWidth: 1,
-    borderColor: "#7C3AED",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  resumeBtnText: { color: "#7C3AED", fontSize: 16, fontWeight: "600" },
-  finishBtn: {
-    flex: 1,
-    height: 54,
-    borderRadius: 14,
-    backgroundColor: "#22C55E",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  finishBtnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  finishedCard: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  finishedEmoji: { fontSize: 64, marginBottom: 16 },
-  finishedTitle: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#F1F1F3",
-    marginBottom: 8,
-  },
-  finishedSubject: { fontSize: 16, color: "#8888A0", marginBottom: 32 },
-  finishedStats: { flexDirection: "row", gap: 40, marginBottom: 40 },
-  finishedStat: { alignItems: "center" },
-  finishedStatNumber: {
-    fontSize: 32,
-    fontWeight: "700",
-    color: "#F1F1F3",
-  },
-  finishedStatLabel: { fontSize: 14, color: "#8888A0", marginTop: 4 },
-  doneBtn: {
-    backgroundColor: "#7C3AED",
-    height: 54,
-    borderRadius: 14,
-    paddingHorizontal: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  doneBtnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-}); 
+  subjectChipText: { fontSize: 15, fontWeight: "600", color: TEXT.primary },
 
+  timerWrap: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
+  timerSubject: { fontSize: 14, color: TEXT.muted, textTransform: "uppercase", letterSpacing: 2, marginBottom: 32 },
+  timerRing: {
+    width: 200, height: 200, borderRadius: 100, borderWidth: 3, borderColor: CLAY[600],
+    backgroundColor: INK[800], alignItems: "center", justifyContent: "center", marginBottom: 20,
+  },
+  timerText: { fontSize: 48, fontWeight: "800", color: TEXT.strong, letterSpacing: -2 },
+  timerHint: { fontSize: 14, color: TEXT.muted, fontStyle: "italic", marginBottom: 40 },
+  timerBtns: { flexDirection: "row", gap: 12 },
+  timerBtnOutline: {
+    borderRadius: 14, paddingVertical: 16, paddingHorizontal: 32,
+    borderWidth: 1, borderColor: INK[700], backgroundColor: INK[800],
+  },
+  timerBtnOutlineText: { fontSize: 15, fontWeight: "600", color: TEXT.secondary },
+  timerBtnFill: { borderRadius: 14, paddingVertical: 16, paddingHorizontal: 32 },
+  timerBtnFillText: { fontSize: 15, fontWeight: "700", color: "#fff" },
+
+  finWrap: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
+  finEmoji: { fontSize: 56, marginBottom: 14 },
+  finTitle: { fontSize: 28, fontWeight: "700", color: TEXT.strong, fontFamily: SERIF, fontStyle: "italic" },
+  finSub: { fontSize: 14, color: TEXT.muted, marginTop: 4, marginBottom: 28 },
+  finStats: { flexDirection: "row", alignItems: "center", marginBottom: 32 },
+  finStat: { alignItems: "center", paddingHorizontal: 24 },
+  finStatNum: { fontSize: 24, fontWeight: "800", color: TEXT.strong },
+  finStatLabel: { fontSize: 12, color: TEXT.muted, marginTop: 4 },
+  finDivider: { width: 1, height: 30, backgroundColor: INK[700] },
+  finBtn: { borderRadius: 14, paddingVertical: 16, paddingHorizontal: 40, alignItems: "center" },
+  finBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+});
