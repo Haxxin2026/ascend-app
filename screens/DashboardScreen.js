@@ -3,14 +3,13 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
-  Alert,
   Modal,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { supabase } from "../lib/supabase";
 
@@ -227,6 +226,20 @@ export default function DashboardScreen() {
               <Text style={styles.jumpSub}>{missionsTotal > 0 ? `${missionsComplete}/${missionsTotal} done` : "Set goals"}</Text>
             </TouchableOpacity>
           </View>
+
+            <TouchableOpacity
+            style={[styles.jumpCard, { height: 80 }]}
+            activeOpacity={0.85}
+            onPress={() => router.push("/test-list")}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={styles.jumpIconWrap}><Text style={styles.jumpIcon}>📝</Text></View>
+              <View>
+                <Text style={styles.jumpTitle}>Practice Tests</Text>
+                <Text style={styles.jumpSub}>10 full-length SAT tests</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
 
           {/* Missions progress */}
           {missionsTotal > 0 && (

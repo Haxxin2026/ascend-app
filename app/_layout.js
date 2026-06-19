@@ -9,6 +9,8 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="test-list" />
+        <Stack.Screen name="test-taking" />
       </Stack>
       <StatusBar style="light" />
     </AuthProvider>
