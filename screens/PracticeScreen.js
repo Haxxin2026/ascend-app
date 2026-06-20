@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Platform,
@@ -34,12 +34,18 @@ export default function PracticeScreen() {
   const [availableTopics, setAvailableTopics] = useState([]);
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const timerRef = useRef(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
       if (user) loadSubjects(user.id);
     });
+  }, []);
+
+  useEffect(() => {
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
 
   async function loadSubjects(userId) {
@@ -73,6 +79,9 @@ export default function PracticeScreen() {
     setSelectedAnswer(null);
     setShowResult(false);
     setSelectedDifficulty(difficulty);
+    setElapsedSeconds(0);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
   }
 
   async function submitAnswer(answer) {
@@ -96,8 +105,23 @@ export default function PracticeScreen() {
   }
 
   function nextQuestion() {
-    if (currentIndex + 1 >= questions.length) { setFinished(true); }
-    else { setCurrentIndex((p) => p + 1); setSelectedAnswer(null); setShowResult(false); }
+    if (currentIndex + 1 >= questions.length) {
+      setFinished(true);
+      clearInterval(timerRef.current);
+    } else {
+      setCurrentIndex((p) => p + 1);
+      setSelectedAnswer(null);
+      setShowResult(false);
+    }
+  }
+
+  function exitPractice() {
+    clearInterval(timerRef.current);
+    setSelectedDifficulty(null);
+    setQuestions([]);
+    setCurrentIndex(0);
+    setSelectedAnswer(null);
+    setShowResult(false);
   }
 
   function getOptionStyle(option) {
@@ -115,6 +139,12 @@ export default function PracticeScreen() {
     if (option === selectedAnswer && option !== q.correct_answer) return "#A6402E";
     return TEXT.primary;
   }
+
+  const formatTime = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
 
   // ── Subject selection ──
   if (!selectedSubject) {
@@ -221,7 +251,7 @@ export default function PracticeScreen() {
         <View style={styles.finishedWrap}>
           <Text style={styles.finishedEmoji}>{pct >= 80 ? "🎉" : pct >= 50 ? "💪" : "📚"}</Text>
           <Text style={styles.finishedTitle}>Practice complete</Text>
-          <Text style={styles.finishedSub}>{selectedSubject} · {selectedTopic}</Text>
+          <Text style={styles.finishedSub}>{selectedSubject} · {selectedTopic} · {formatTime(elapsedSeconds)}</Text>
           <View style={styles.scoreRing}>
             <Text style={styles.scoreNum}>{score}/{questions.length}</Text>
             <Text style={styles.scorePct}>{pct}%</Text>
@@ -229,12 +259,13 @@ export default function PracticeScreen() {
           <Text style={styles.scoreMsg}>
             {pct >= 80 ? "Excellent. You're crushing it." : pct >= 50 ? "Good effort. Keep practicing." : "Keep going. Review the explanations."}
           </Text>
-          <TouchableOpacity onPress={() => { setSelectedDifficulty(null); setQuestions([]); }}>
+          <TouchableOpacity onPress={() => { clearInterval(timerRef.current); setSelectedDifficulty(null); setQuestions([]); }}>
             <LinearGradient colors={[CLAY[600], CLAY[700]]} style={styles.finBtn}>
               <Text style={styles.finBtnText}>Try again</Text>
             </LinearGradient>
           </TouchableOpacity>
           <TouchableOpacity style={styles.finBtnOutline} onPress={() => {
+            clearInterval(timerRef.current);
             setSelectedSubject(null); setSelectedTopic(null); setSelectedDifficulty(null); setAvailableTopics([]); setQuestions([]);
           }}>
             <Text style={styles.finBtnOutlineText}>Pick another subject</Text>
@@ -258,12 +289,15 @@ export default function PracticeScreen() {
       <LinearGradient colors={[INK[900], "#1A1208", "#0A0806"]} style={StyleSheet.absoluteFill} />
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.inner}>
-          <TouchableOpacity onPress={() => { setSelectedDifficulty(null); setQuestions([]); setCurrentIndex(0); setSelectedAnswer(null); setShowResult(false); }}>
+          <TouchableOpacity onPress={exitPractice}>
             <Text style={styles.backText}>← Exit practice</Text>
           </TouchableOpacity>
 
           <View style={styles.qHeader}>
             <Text style={styles.qCount}>Question {currentIndex + 1} of {questions.length}</Text>
+            <View style={styles.timerBadge}>
+              <Text style={styles.timerBadgeText}>{formatTime(elapsedSeconds)}</Text>
+            </View>
             <View style={styles.topicBadge}>
               <Text style={styles.topicBadgeText}>{question.topic}</Text>
             </View>
@@ -347,6 +381,8 @@ const styles = StyleSheet.create({
 
   qHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   qCount: { fontSize: 13, color: TEXT.muted },
+  timerBadge: { backgroundColor: INK[750], paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  timerBadgeText: { fontSize: 13, fontWeight: "700", color: TEXT.primary, fontVariant: ["tabular-nums"] },
   topicBadge: { backgroundColor: CLAY[700] + "30", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   topicBadgeText: { fontSize: 11, color: TEXT.accent, fontWeight: "600" },
 
