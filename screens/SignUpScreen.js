@@ -33,7 +33,9 @@ export default function SignUpScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   function toggleSubject(sub) {
     setSelectedSubjects((prev) =>
@@ -42,15 +44,65 @@ export default function SignUpScreen() {
   }
 
   async function handleSignUp() {
-    if (!email || !password || !username) { Alert.alert("Error", "Please fill in all fields."); return; }
+    setErrorMsg("");
+    if (!email || !password || !username) {
+      setErrorMsg("Please fill in all fields.");
+      return;
+    }
+    if (password.length < 6) {
+      setErrorMsg("Password must be at least 6 characters.");
+      return;
+    }
+
+    // Check referral code if entered
+    let referrerId = null;
+    if (referralCode.trim()) {
+      const { data: referrer } = await supabase
+        .from("users")
+        .select("id")
+        .eq("referral_code", referralCode.trim().toUpperCase())
+        .single();
+      if (!referrer) {
+        setErrorMsg("Invalid referral code. Check and try again, or leave it blank.");
+        return;
+      }
+      referrerId = referrer.id;
+    }
+
     setLoading(true);
     const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) { setLoading(false); Alert.alert("Error", error.message); return; }
-    if (data.user) {
-      await supabase.from("users").update({
-        username, subjects: selectedSubjects, daily_goal_min: dailyGoal,
-      }).eq("id", data.user.id);
+    if (error) {
+      setLoading(false);
+      if (error.message.includes("already registered") || error.message.includes("already been registered")) {
+        setErrorMsg("An account with this email already exists. Try signing in instead.");
+      } else if (error.message.includes("valid email")) {
+        setErrorMsg("Please enter a valid email address.");
+      } else if (error.message.includes("password")) {
+        setErrorMsg("Password must be at least 6 characters.");
+      } else {
+        setErrorMsg(error.message);
+      }
+      return;
     }
+
+    if (data.user) {
+      const updateData = {
+        username,
+        subjects: selectedSubjects,
+        daily_goal_min: dailyGoal,
+      };
+
+      // If referred, unlock tests for both users
+      if (referrerId) {
+        updateData.referred_by = referrerId;
+        updateData.tests_unlocked = true;
+        // Unlock the referrer too
+        await supabase.from("users").update({ tests_unlocked: true }).eq("id", referrerId);
+      }
+
+      await supabase.from("users").update(updateData).eq("id", data.user.id);
+    }
+
     setLoading(false);
     router.replace("/(tabs)");
   }
@@ -124,11 +176,32 @@ export default function SignUpScreen() {
               <View>
                 <Text style={styles.stepTitle}>Create your account</Text>
                 <Text style={styles.stepSub}>Almost there. Enter your details below.</Text>
-                <TextInput style={styles.input} placeholder="Username" placeholderTextColor={TEXT.faint} value={username} onChangeText={setUsername} />
-                <TextInput style={styles.input} placeholder="Email" placeholderTextColor={TEXT.faint} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-                <TextInput style={styles.input} placeholder="Password" placeholderTextColor={TEXT.faint} value={password} onChangeText={setPassword} secureTextEntry />
+
+                {errorMsg ? (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{errorMsg}</Text>
+                  </View>
+                ) : null}
+
+                <TextInput style={styles.input} placeholder="Username" placeholderTextColor={TEXT.faint} value={username} onChangeText={(t) => { setUsername(t); setErrorMsg(""); }} />
+                <TextInput style={styles.input} placeholder="Email" placeholderTextColor={TEXT.faint} value={email} onChangeText={(t) => { setEmail(t); setErrorMsg(""); }} keyboardType="email-address" autoCapitalize="none" />
+                <TextInput style={styles.input} placeholder="Password (min 6 characters)" placeholderTextColor={TEXT.faint} value={password} onChangeText={(t) => { setPassword(t); setErrorMsg(""); }} secureTextEntry />
+
+                <View style={styles.referralWrap}>
+                  <Text style={styles.referralLabel}>Have a referral code?</Text>
+                  <TextInput
+                    style={styles.referralInput}
+                    placeholder="Enter code (optional)"
+                    placeholderTextColor={TEXT.faint}
+                    value={referralCode}
+                    onChangeText={(t) => { setReferralCode(t); setErrorMsg(""); }}
+                    autoCapitalize="characters"
+                    maxLength={6}
+                  />
+                </View>
+
                 <View style={styles.btnRow}>
-                  <TouchableOpacity style={styles.backBtn} onPress={() => setStep(2)}>
+                  <TouchableOpacity style={styles.backBtn} onPress={() => { setStep(2); setErrorMsg(""); }}>
                     <Text style={styles.backBtnText}>Back</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={handleSignUp} disabled={loading} style={{ flex: 1 }} activeOpacity={0.85}>
@@ -180,6 +253,14 @@ const styles = StyleSheet.create({
     fontSize: 15, color: TEXT.primary, marginBottom: 12, borderWidth: 1, borderColor: INK[700],
   },
 
+  referralWrap: { marginBottom: 12, marginTop: 4 },
+  referralLabel: { fontSize: 13, color: TEXT.muted, marginBottom: 8 },
+  referralInput: {
+    backgroundColor: INK[800], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
+    fontSize: 16, color: TEXT.accent, borderWidth: 1, borderColor: INK[700],
+    letterSpacing: 4, textAlign: "center", fontWeight: "700",
+  },
+
   btn: { borderRadius: 12, paddingVertical: 18, alignItems: "center" },
   btnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   btnRow: { flexDirection: "row", gap: 10, marginTop: 8 },
@@ -192,4 +273,10 @@ const styles = StyleSheet.create({
   linkWrap: { alignItems: "center", marginTop: 24 },
   linkText: { fontSize: 14, color: TEXT.muted },
   linkAccent: { color: TEXT.accent, fontWeight: "600" },
+
+  errorBox: {
+    backgroundColor: "#A6402E20", borderRadius: 10, padding: 12, marginBottom: 16,
+    borderWidth: 1, borderColor: "#A6402E50",
+  },
+  errorText: { fontSize: 13, color: "#E8745A", lineHeight: 18 },
 });
