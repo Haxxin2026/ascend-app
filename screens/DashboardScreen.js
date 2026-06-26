@@ -127,9 +127,50 @@ export default function DashboardScreen() {
             >
               <Text style={styles.signOutBtnText}>Sign out</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.signOutBtn}
+              onPress={() => { setShowProfile(false); handleSignOut(); }}
+            >
+              <Text style={styles.signOutBtnText}>Sign out</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.deleteBtn}
+              onPress={() => {
+                Alert.alert(
+                  "Delete Account",
+                  "Are you sure you want to permanently delete your account and all your data? This cannot be undone.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Delete",
+                      style: "destructive",
+                      onPress: async () => {
+                        if (user) {
+                          await supabase.from("student_answers").delete().eq("user_id", user.id);
+                          await supabase.from("test_attempts").delete().eq("user_id", user.id);
+                          await supabase.from("study_sessions").delete().eq("user_id", user.id);
+                          await supabase.from("tasks").delete().eq("user_id", user.id);
+                          await supabase.from("streaks").delete().eq("user_id", user.id);
+                          await supabase.from("weakness_areas").delete().eq("user_id", user.id);
+                          await supabase.from("users").delete().eq("id", user.id);
+                          await supabase.auth.signOut();
+                          setShowProfile(false);
+                          router.replace("/(auth)/signin");
+                        }
+                      },
+                    },
+                  ]
+                );
+              }}
+            >
+              <Text style={styles.deleteBtnText}>Delete account</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.inner}>
@@ -352,4 +393,7 @@ const styles = StyleSheet.create({
   profileValue: { fontSize: 14, fontWeight: "500", color: TEXT.primary, textAlign: "right", flex: 1, marginLeft: 16 },
   signOutBtn: { marginTop: 24, backgroundColor: INK[750], borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: INK[700] },
   signOutBtnText: { fontSize: 15, fontWeight: "600", color: "#A6402E" },
+  signOutBtnText: { fontSize: 15, fontWeight: "600", color: "#A6402E" },
+  deleteBtn: { marginTop: 10, backgroundColor: "transparent", borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: "#A6402E50" },
+  deleteBtnText: { fontSize: 15, fontWeight: "600", color: "#A6402E" },
 });

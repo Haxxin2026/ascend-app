@@ -17,8 +17,8 @@ const MASTERY = { critical: "#A6402E", weak: "#CC6B3F", medium: "#D7A24E", stron
 const SERIF = Platform.OS === "ios" ? "Georgia" : "serif";
 
 const TOPICS = {
-  "SAT Reading and Writing": ["Central Ideas", "Inferences", "Command of Evidence", "Words in Context", "Text Structure & Purpose", "Rhetorical Synthesis", "Transitions", "Boundaries", "Form, Structure, and Sense"],
-  "SAT Math": ["Linear equations in one variable", "Linear functions", "Linear Equations in Two Variables", "Systems of Two Linear Equations", "Nonlinear functions", "Nonlinear Equations & Systems", "Equivalent Expressions", "Ratios", "Percentages", "One-Variable Data", "Scatterplots", "Probability and conditional probability", "Area and Volume", "Right Triangles and Trigonometry", "Lines, Angles, and Triangles", "Circles"],
+  "SAT Reading and Writing": ["Central Ideas and Details", "Inferences", "Command of Evidence", "Words in Context", "Text Structure and Purpose", "Rhetorical Synthesis", "Transitions", "Boundaries", "Form, Structure, and Sense"],
+  "SAT Math": ["Linear equations in one variable", "Linear functions", "Linear equations in two variables", "Systems of two linear equations in two variables", "Nonlinear functions", "Nonlinear Equations & Systems", "Equivalent Expressions", "Ratios, rates, proportional relationships, and units", "Percentages", "One-variable data: Distributions and measures of center and spread", "Two-variable data: Models and scatterplots", "Probability and conditional probability", "Area and Volume", "Right Triangles and Trigonometry", "Lines, Angles, and Triangles", "Circles"],
 };
 
 export default function HeatmapScreen() {
@@ -49,19 +49,13 @@ export default function HeatmapScreen() {
     setAreas(data || []);
   }
 
- async function rateTop(topic, score, confidence) {
-    console.log("RATING TAPPED:", topic, score, confidence);
-    if (!user || !selectedSubject) {
-      console.log("NO USER OR SUBJECT");
-      return;
-    }
+  async function rateTop(topic, score, confidence) {
+    if (!user || !selectedSubject) return;
     const existing = areas.find((a) => a.topic === topic);
     if (existing) {
-      const { error } = await supabase.from("weakness_areas").update({ score, confidence, updated_at: new Date().toISOString() }).eq("id", existing.id);
-      console.log("UPDATE result:", error);
+      await supabase.from("weakness_areas").update({ score, confidence, updated_at: new Date().toISOString() }).eq("id", existing.id);
     } else {
-      const { error } = await supabase.from("weakness_areas").insert({ user_id: user.id, subject: selectedSubject, topic, score, confidence });
-      console.log("INSERT result:", error);
+      await supabase.from("weakness_areas").insert({ user_id: user.id, subject: selectedSubject, topic, score, confidence });
     }
     loadAreas(user.id, selectedSubject);
   }
@@ -90,6 +84,7 @@ export default function HeatmapScreen() {
 
   const overallScore = areas.length > 0 ? Math.round(areas.reduce((s, a) => s + a.score, 0) / areas.length) : 0;
   const topics = TOPICS[selectedSubject] || [];
+  const hasTopics = topics.length > 0;
   const ratings = [
     { emoji: "😰", label: "Lost", score: 15, conf: "lost" },
     { emoji: "😟", label: "Shaky", score: 35, conf: "shaky" },
@@ -120,7 +115,15 @@ export default function HeatmapScreen() {
             </View>
           </ScrollView>
 
-          {areas.length > 0 && (
+          {!hasTopics && selectedSubject && (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyEmoji}>🚧</Text>
+              <Text style={styles.emptyTitle}>Coming soon</Text>
+              <Text style={styles.emptyText}>Heatmap topics for {selectedSubject} are not available yet. Check back soon!</Text>
+            </View>
+          )}
+
+          {hasTopics && areas.length > 0 && (
             <View style={styles.overallCard}>
               <View style={styles.overallHeader}>
                 <Text style={styles.overallLabel}>{selectedSubject} overall</Text>
@@ -143,13 +146,10 @@ export default function HeatmapScreen() {
                 </View>
                 <View style={styles.ratingRow}>
                   {ratings.map((r) => (
-                      <TouchableOpacity
+                    <TouchableOpacity
                       key={r.conf}
                       style={[styles.ratingBtn, conf === r.conf && styles.ratingBtnActive]}
-                      onPress={() => {
-                        console.log("BUTTON PRESSED");
-                        rateTop(topic, r.score, r.conf);
-                      }}
+                      onPress={() => rateTop(topic, r.score, r.conf)}
                       activeOpacity={0.6}
                     >
                       <Text style={styles.ratingEmoji}>{r.emoji}</Text>
@@ -180,6 +180,11 @@ const styles = StyleSheet.create({
   tabActive: { backgroundColor: CLAY[700], borderColor: CLAY[600] },
   tabText: { fontSize: 13, fontWeight: "600", color: TEXT.muted },
   tabTextActive: { color: TEXT.strong },
+
+  emptyCard: { backgroundColor: INK[800], borderRadius: 14, padding: 32, marginBottom: 16, borderWidth: 1, borderColor: INK[700], alignItems: "center" },
+  emptyEmoji: { fontSize: 40, marginBottom: 12 },
+  emptyTitle: { fontSize: 18, fontWeight: "700", color: TEXT.primary, marginBottom: 8 },
+  emptyText: { fontSize: 13, color: TEXT.muted, textAlign: "center", lineHeight: 19 },
 
   overallCard: { backgroundColor: INK[800], borderRadius: 14, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: INK[700] },
   overallHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
